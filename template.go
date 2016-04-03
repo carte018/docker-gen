@@ -380,7 +380,7 @@ func newTemplate(name string) *template.Template {
 	return tmpl
 }
 
-func generateFile(config Config, containers Context) bool {
+func generateFile(config Config, containers Context, event string) bool {
 	filteredContainers := Context{}
 	if config.OnlyPublished {
 		for _, container := range containers {
@@ -398,7 +398,20 @@ func generateFile(config Config, containers Context) bool {
 		filteredContainers = containers
 	}
 
-	contents := executeTemplate(config.Template, filteredContainers)
+    t := config.Template
+    if event == "scheduled" {
+        t = config.ScheduledTemplate
+    } else if event == "init" {
+        t = config.InitTemplate
+    } else if event == "start" {
+        t = config.StartTemplate
+    } else if event == "stop" || event == "die" {
+        t = config.StopTemplate
+    }
+
+	// contents := executeTemplate(config.Template, filteredContainers)
+    fmt.Println("Executing t = " + t)
+    contents := executeTemplate(t,filteredContainers)
 
 	if !config.KeepBlankLines {
 		buf := new(bytes.Buffer)

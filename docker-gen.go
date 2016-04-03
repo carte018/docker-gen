@@ -120,6 +120,10 @@ type Config struct {
 	OnlyPublished    bool
 	Interval         int
 	KeepBlankLines   bool
+    InitTemplate     string
+    StartTemplate    string
+    StopTemplate     string
+    ScheduledTemplate   string
 }
 
 type ConfigFile struct {
@@ -205,14 +209,14 @@ func NewDockerClient(endpoint string) (*docker.Client, error) {
 	return docker.NewClient(endpoint)
 }
 
-func generateFromContainers(client *docker.Client) {
+func generateFromContainers(client *docker.Client, event string) {
 	containers, err := getContainers(client)
 	if err != nil {
 		log.Printf("error listing containers: %s\n", err)
 		return
 	}
 	for _, config := range configs.Config {
-		changed := generateFile(config, containers)
+		changed := generateFile(config, containers, event)
 		if !changed {
 			log.Printf("Contents of %s did not change. Skipping notification '%s'", config.Dest, config.NotifyCmd)
 			continue
@@ -284,7 +288,7 @@ func generateAtInterval(client *docker.Client, configs ConfigFile) {
 						continue
 					}
 					// ignore changed return value. always run notify command
-					generateFile(configCopy, containers)
+					generateFile(configCopy, containers, "scheduled")
 					runNotifyCmd(configCopy)
 					sendSignalToContainer(client, configCopy)
 				case <-quit:
@@ -321,7 +325,7 @@ func generateFromEvents(client *docker.Client, configs ConfigFile) {
 				time.Sleep(10 * time.Second)
 				continue
 			}
-			generateFromContainers(client)
+			generateFromContainers(client, "init")
 		}
 
 		eventChan := make(chan *docker.APIEvents, 100)
@@ -371,7 +375,7 @@ func generateFromEvents(client *docker.Client, configs ConfigFile) {
 
 				if event.Status == "start" || event.Status == "stop" || event.Status == "die" {
 					log.Printf("Received event %s for container %s", event.Status, event.ID[:12])
-					generateFromContainers(client)
+					generateFromContainers(client, event.Status)
 				}
 			case <-time.After(10 * time.Second):
 				// check for docker liveness
@@ -458,7 +462,7 @@ func main() {
 		log.Fatalf("Unable to create docker client: %s", err)
 	}
 
-	generateFromContainers(client)
+	generateFromContainers(client,"init")
 	generateAtInterval(client, configs)
 	generateFromEvents(client, configs)
 	wg.Wait()
